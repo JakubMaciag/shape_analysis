@@ -1,0 +1,394 @@
+package plugins;
+
+/**
+ *
+ * @author Jakub_Maciag
+ */
+import ij.ImagePlus;
+import ij.IJ;
+import ij.gui.GenericDialog;
+import ij.gui.ImageCanvas;
+import ij.process.ImageProcessor;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import ij.plugin.filter.PlugInFilter;
+import static ij.plugin.filter.PlugInFilter.DOES_ALL;
+import ij.process.ImageConverter;
+
+//skeletonization
+
+public class IJ_Skeletonization implements PlugInFilter, MouseListener {
+
+    private ImagePlus imp;
+    private ImageProcessor ip;
+    private int nx, ny;
+    private int mx, my;
+    private ImageCanvas canvas;
+    private boolean inwers = false;
+
+    public int setup(String arg, ImagePlus imp) {
+        this.imp = imp;
+        ip = imp.getProcessor();
+        IJ.register(Mouse_Listener.class);
+        return DOES_ALL;
+    }
+
+    public void run(ImageProcessor ip) {
+
+        if (!(imp.getType() == ImagePlus.COLOR_RGB)) {
+            ImageConverter convert = new ImageConverter(imp);
+            convert.convertToRGB();
+        }
+        try {
+
+            canvas = imp.getCanvas();
+         
+            IJ.showMessage("Instrukcja ObsĹ‚ugi\n"
+                    + "\n"
+                    + "1. Po otworzeniu obrazu oraz uruchomieniu aktualnego pluginu oraz po zaakceptowaniu okna instrukcji naleĹĽy okreĹ›liÄ‡, czy obraz musi zostaÄ‡ poddany\n"
+                    + "dodatkowej inwersji (jeĹĽeli badany obszar jest jasny - wymagana jest inwersja).\n"
+                    + "W tym celu naleĹĽy zaznaczyÄ‡ w oknie dialogowym okienko 'Inwersja' a nastÄ™pnie je zaakceptowaÄ‡ klikajÄ…c przycisk OK\n"
+                    + "JeĹĽeli inwersja nie jest wymagana, naleĹĽy zaakceptowaÄ‡ okno dialogowe bez zaznaczania inwersji.\n"
+                    + "2. Region, ktĂłry bÄ™dzie podlegaĹ‚ przetwarzaniu musi speĹ‚niaÄ‡ prĂłg binaryzacji zaimplementowanej w programie.\n"
+                    + "3. W celu okreĹ›lenia badanego obszaru naleĹĽy kliknÄ…Ä‡ lewym przyciskiem myszki po najechaniu kursorem na dany region.\n"
+                    + "4. Po przetworzeniu wynik szkieletyzacji danego regionu zostanie zamalowany na niebiesko.\n "
+                    + "Proces moĹĽe potrwaÄ‡ kilkanaĹ›cie sekund.");
+
+            GenericDialog gd = new GenericDialog("Czy chcesz dokonaÄ‡ inwersji?");
+            gd.addCheckbox("Inwersja", inwers);
+            gd.showDialog();
+            if (gd.wasCanceled()) {
+                return;
+            }
+
+            inwers = gd.getNextBoolean();
+            if (gd.wasOKed()) {
+
+                canvas = imp.getCanvas();
+                canvas.addMouseListener(this);
+
+            }
+        } catch (ClassCastException ex) {
+            IJ.showMessage("Error", "Wrong image type");
+        }
+
+    }
+
+    private void OpenX(ImageProcessor ip) {
+        ip.dilate();
+        ip.erode();
+    }
+
+    private void CloseX(ImageProcessor ip) {
+        ip.erode();
+        ip.dilate();
+    }
+
+    private void BinaryX(ImageProcessor ip, int nx, int ny) {
+        if(inwers)
+            ip.invert();
+        for (int i = 0; i < ny; i++) {
+            for (int j = 0; j < nx; j++) {
+                int buffor;
+                int byffT[] = {0, 0, 0};
+                ip.getPixel(j, i, byffT);
+                //R
+                if ((byffT[0] < 127) || (byffT[1] < 127) || (byffT[2] < 127)) {
+                    byffT[0] = 0;
+                    byffT[1] = 0;
+                    byffT[2] = 0;
+                } else {
+                    byffT[0] = 255;
+                    byffT[1] = 255;
+                    byffT[2] = 255;
+                }
+                ip.putPixel(j, i, byffT);
+
+            }
+        }
+        ip.setBinaryThreshold();
+        ip.autoThreshold();
+        ip.invert();
+    }
+
+    private void SegmentX(ImageProcessor in, int nx, int ny, int mx, int my, int co, int piXTa[][], int FP[][], int fat[]) {
+
+        //przypisanie odpowiednich wartosci tablicy
+        for (int i = 0; i < ny; i++) {
+            for (int j = 0; j < nx; j++) {
+                int bufferSeg[] = {0, 0, 0};
+                in.getPixel(j, i, bufferSeg);
+                if (bufferSeg[0] == 255 && bufferSeg[1] == 255 && bufferSeg[2] == 255) {
+                    piXTa[j][i] = 1;
+                } else {
+                    piXTa[j][i] = 0;
+                }
+
+            }
+        }
+
+        boolean varx = true;
+        float sx = 0;
+        float sy = 0;
+        float area = 0;
+
+        piXTa[mx][my] = co;
+        int valu[] = {0, 0, 255};
+        in.putPixel(mx, my, valu);
+        int labeled = 0;
+        int lab = 0;
+        while (varx) {
+            if (lab < 5000) {
+                varx = true;
+            } else {
+                varx = false;
+            }
+            for (int i = 1; i < ny - 1; i++) {
+                for (int j = 1; j < nx - 1; j++) {
+                    if ((piXTa[j][i] == 1)) {
+                        if ((piXTa[j + 1][i] == co) || (piXTa[j - 1][i] == co) || (piXTa[j][i + 1] == co) || (piXTa[j][i - 1] == co) || (piXTa[j - 1][i - 1] == co) || (piXTa[j - 1][i + 1] == co) || (piXTa[j + 1][i - 1] == co) || (piXTa[j + 1][i + 1] == co)) {
+                            piXTa[j][i] = co;
+                            int buf[] = {0, 0, 255};
+                            in.putPixel(j, i, buf);
+
+                        }
+                    }
+                }
+
+            }
+            System.out.println(Integer.toString(lab));
+            lab = lab + 1;
+        };
+
+        boolean var2 = true;
+        int n = 0;
+        int iter = 0;
+        while (var2) {
+            if (n < 5000 && n != 0) {
+                var2 = true;
+            } else {
+                varx = false;
+            }
+            for (int i = 1; i < ny - 1; i++) {
+                for (int j = 1; j < nx - 1; j++) {
+                    if ((piXTa[j][i] == co)) {
+        
+                        int p = 0;
+                        if ((piXTa[j + 1][i] == co)) {
+                            p = p + 4;
+                        }
+                        if (piXTa[j - 1][i] == co) {
+                            p = p + 64;
+                        }
+                        if (piXTa[j][i + 1] == co) {
+                            p = p + 16;
+                        }
+                        if (piXTa[j][i - 1] == co) {
+                            p = p + 1;
+                        }
+                        if (piXTa[j - 1][i - 1] == co) {
+                            p = p + 32;
+                        }
+                        if (piXTa[j - 1][i + 1] == co) {
+                            p = p + 128;
+                        }
+                        if (piXTa[j + 1][i - 1] == co) {
+                            p = p + 2;
+                        }
+                        if (piXTa[j + 1][i + 1] == co) {
+                            p = p + 8;
+                        }
+                        boolean p3, p2, p1;
+
+                        if (fat[p] == 3) {
+                            p3 = true;
+                        } else {
+                            p3 = false;
+                        }
+                        if (fat[p] == 2) {
+                            p2 = true;
+                        } else {
+                            p2 = false;
+                        }
+                        if (fat[p] == 1) {
+                            p1 = true;
+                        } else {
+                            p1 = false;
+                        }
+                        System.out.println(Integer.toString(p) + "______________________");
+                        if ((p3) || ((p2) && (iter & 1) == 0) || ((p1) && (iter & 1) == 1)) {
+                            FP[j][i] = 10;
+
+                        }
+
+                        //}
+                    }
+                }
+
+            }
+            System.out.println(Integer.toString(iter));
+
+            for (int i = 0; i < ny - 1; i++) {
+                for (int j = 0; j < nx - 1; j++) {
+                    if (FP[j][i] == 10) {
+                        piXTa[j][i] = 0;
+                        n = n + 1;
+                    }
+                }
+            }
+            iter = iter + 1;
+            if (n < 5000 && n != 0) {
+                var2 = true;
+            } else {
+                var2 = false;
+            }
+        };
+        boolean va = true;
+
+        int lab2 = 0;
+        while (va) {
+            if (lab2 < 5000) {
+                va = true;
+            } else {
+                va = false;
+            }
+            for (int i = 1; i < ny - 1; i++) {
+                for (int j = 1; j < nx - 1; j++) {
+                    if ((FP[j][i] == 10)) {
+                      
+                        piXTa[j][i] = 10;
+                        int buf[] = {255, 255, 255};
+                        in.putPixel(j, i, buf);
+
+                    }
+                }
+
+            }
+            System.out.println(Integer.toString(lab2));
+            lab2 = lab2 + 1;
+        };
+
+    }
+
+    public void mousePressed(MouseEvent e) {
+         nx = imp.getWidth();
+         ny = imp.getHeight();
+        int x = e.getX();
+        int y = e.getY();
+        mx = canvas.offScreenX(x);
+        my = canvas.offScreenY(y);
+
+           
+
+            //tworzenie pustej tablicy obrazu
+            int[][] piXtable = new int[nx][ny];
+            for (int i = 0; i < ny; i++) {
+                for (int j = 0; j < nx; j++) {
+
+                    piXtable[j][i] = 0;
+                }
+            }
+            int[][] FX = new int[nx][ny];
+            for (int i = 0; i < ny; i++) {
+                for (int j = 0; j < nx; j++) {
+
+                    FX[j][i] = 0;
+                }
+            }
+            int[] fat = new int[256];
+            for (int i = 0; i < 256; i++) {
+                fat[i] = 0;
+
+            }
+
+            fat[3] = 1;
+            fat[6] = 1;
+            fat[7] = 1;
+            fat[67] = 1;
+            fat[97] = 1;
+            fat[99] = 1;
+            fat[129] = 1;
+            fat[133] = 1;
+            fat[192] = 1;
+            fat[193] = 1;
+            fat[199] = 1;
+            fat[231] = 1;
+            fat[241] = 1;
+            fat[243] = 1;
+            fat[249] = 1;
+            fat[207] = 1;
+            fat[208] = 1;
+
+            fat[12] = 2;
+            fat[13] = 2;
+            fat[24] = 2;
+            fat[28] = 2;
+            fat[31] = 2;
+            fat[47] = 2;
+            fat[51] = 2;
+            fat[53] = 2;
+            fat[63] = 2;
+            fat[87] = 2;
+            fat[96] = 2;
+            fat[112] = 2;
+            fat[126] = 2;
+            fat[124] = 2;
+            fat[159] = 2;
+            fat[252] = 2;
+
+            fat[5] = 3;
+            fat[14] = 3;
+            fat[15] = 3;
+            fat[20] = 3;
+            fat[30] = 3;
+            fat[62] = 3;
+            fat[60] = 3;
+            fat[56] = 3;
+            fat[65] = 3;
+            fat[80] = 3;
+            fat[120] = 3;
+            fat[131] = 3;
+            fat[135] = 3;
+            fat[143] = 3;
+            fat[195] = 3;
+            fat[248] = 3;
+
+            BinaryX(ip, nx, ny);
+
+            //operacje morfologiczne
+            for (int morf = 0; morf < 5; morf++) {
+                CloseX(ip);
+                OpenX(ip);
+                CloseX(ip);
+            }
+
+            SegmentX(ip, nx, ny, mx, my, 3, piXtable, FX, fat);
+            System.out.println("koniec!");
+            canvas.removeMouseListener(this);
+        
+
+    }
+
+    public void mouseReleased(MouseEvent e) {
+        canvas.removeMouseListener(this);
+        
+
+    }
+
+    public void mouseDragged(MouseEvent e) {
+        
+    }
+
+    public void mouseExited(MouseEvent e) {
+        
+    }
+
+    public void mouseClicked(MouseEvent e) {
+       
+    }
+
+    public void mouseEntered(MouseEvent e) {
+        
+    }
+
+}
