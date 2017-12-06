@@ -1,0 +1,315 @@
+package plugins;
+/**
+ *
+ * @author Jakub_Maciag
+ */
+import ij.ImagePlus;
+import ij.gui.ImageCanvas;
+import ij.process.ImageProcessor;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import static ij.plugin.filter.PlugInFilter.DOES_ALL;
+import java.awt.event.*;
+import ij.IJ;
+import ij.gui.GenericDialog;
+import ij.plugin.filter.PlugInFilter;
+import ij.process.ImageConverter;
+import java.util.Arrays;
+
+public class IJ_ContourAndHistogram implements PlugInFilter, MouseListener, MouseMotionListener
+{
+  private ImagePlus imp;
+  private int nx, ny;
+  private ImageProcessor ip;
+  private int mx,my; 
+  private ImageCanvas canvas;
+  private boolean binary=true;
+  private boolean inwertt=false;
+  private boolean histogram = false;
+  
+  public int setup(String arg, ImagePlus imp) 
+  {
+      this.imp = imp;
+      ip=imp.getProcessor();
+      IJ.register(Mouse_Listener.class);
+      return DOES_ALL;
+  }
+
+  public void run(ImageProcessor ip) 
+  {
+       try {
+	IJ.showMessage("Instrukcja Obsługi\n"
+                + "Program do wykrywania konturów i określenia histogramu na podstawie konturów i osi 0Y\n"
+                + "Prgogram działa dla niewielkich obszarów \n"
+                + "1. Po uruchomieniu pluginu pojawi się pytanie czy zobrazować histogram (pairwise geometric histogram)\n"
+                + "2. Jeżeli zaznaczy się w oknie opcję TAK, wtedy pojawi się histogram graficzny\n"
+                + "3. Niezależnie od wyboru pojawi się okno ukazujące histogram w formie wartości liczbowej\n"
+                + "4. Region, który będzie podlegał przetwarzaniu musi spełniać próg binaryzacji zaimplementowanej w programie.\n"
+                + "Obszar badany powinien być ciemny, a w przypadku jasnego obszaru - obraz należy poddać inwersji.\n"
+                + "5. Kliknąć lewym przyciskiem myszki po najechaniu kursorem na dany obszar.\n"
+                + "Histogram na osi 0X znajduje się odległoś od osi 0Y, zaś na osi 0Y znajduje się wartość kątowa osi z punktu (0;0) do bierzącego piksela względem osi 0Y\n"
+                + "Proces może potrwać kilka sekund.");	
+        if (!(imp.getType()==ImagePlus.COLOR_RGB))
+        {
+            ImageConverter convert= new ImageConverter(imp);
+            convert.convertToRGB();
+        }
+        GenericDialog gd = new GenericDialog("Czy chcesz uzyskac histogram?");
+        boolean bina=false;
+        gd.addCheckbox("Histogram - TAK", bina);
+        gd.addCheckbox("Inwersja", inwertt);
+        gd.showDialog();
+        if (gd.wasCanceled()) 
+            return;
+        bina=gd.getNextBoolean();
+        inwertt=gd.getNextBoolean();
+        if (gd.wasOKed())
+        {
+           if (bina)
+           {
+            histogram = true;
+            canvas = imp.getCanvas();
+            canvas.addMouseListener(this);
+           }
+          else if (bina==false)
+           {
+            histogram = false;
+            canvas = imp.getCanvas();
+            canvas.addMouseListener(this);
+           }
+        }
+      
+        }
+        catch(ClassCastException ex)
+        {
+          IJ.showMessage("Error","Wrong image type");
+        }   
+}
+
+  private void OpenX (ImageProcessor ip)
+  {
+  ip.dilate();
+  ip.erode();
+  }
+  
+  private void CloseX (ImageProcessor ip)
+  {
+  ip.erode();
+  ip.dilate();
+  }
+  
+  private void BinaryX (ImageProcessor ip, int nx, int ny )
+  {
+      if(inwertt)
+      ip.invert();
+      for(int i=0; i<ny; i++)
+        { 
+            for(int j=0; j<nx; j++) 
+            {
+                int buffor;
+                 int byffT []= {0,0,0};
+                ip.getPixel(j, i, byffT);
+                
+                if((byffT[0]<90) || (byffT[1]<90)||(byffT[2]<90) )
+                {
+                    byffT[0]=0;
+                    byffT[1]=0;
+                    byffT[2]=0;
+                }
+                else 
+                {
+                    byffT[0]=255;
+                    byffT[1]=255;
+                byffT[2]=255;
+                }
+                ip.putPixel(j, i, byffT);
+        }
+        }
+        ip.setBinaryThreshold();
+     ip.autoThreshold();
+     ip.invert();
+} 
+  
+   private void SegmentX (ImageProcessor in, int nx, int ny, int mx, int my,  int co,int piXTa[][], double hist[][] )
+  {
+     
+      //przypisanie odpowiednich wartosci tablicy
+    for(int i=0; i<ny-1; i++)
+        { 
+            for(int j=0; j<nx-1; j++) 
+            {
+                int bufferSeg []={0,0,0};
+                in.getPixel(j, i, bufferSeg);
+                  if (bufferSeg[0]==255&&bufferSeg[1]==255&&bufferSeg[2]==255)
+                  
+                piXTa [j][i]=1;
+                  else 
+                 piXTa [j][i]=0;
+                       
+            }
+        }
+        boolean varx=true;
+       
+        
+          piXTa[mx][my]=co;
+          
+          //int valu [] = {0,0,255};
+          //in.putPixel(mx, my, valu);
+          int labeled =0;
+          int lab=0;
+        while (varx) {
+           if (lab<5000)
+                   varx=true;
+           else
+               varx=false;
+    for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+                if((piXTa [j][i]==1))
+                {
+                    if((piXTa [j+1][i]==co)||(piXTa [j-1][i]==co)||(piXTa [j][i+1]==co)||(piXTa [j][i-1]==co)||(piXTa [j-1][i-1]==co)||(piXTa [j-1][i+1]==co)||(piXTa [j+1][i-1]==co)||(piXTa [j+1][i+1]==co))
+                    {
+                        piXTa[j][i]=co;
+                       
+                        labeled=labeled+1;
+                       
+                    }
+            }
+        }
+
+      }
+    //System.out.println(Integer.toString(lab)); 
+    lab=lab+1;
+    };
+ int co2=co+1;
+    for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+            
+                if((piXTa [j][i]==co))
+                {
+                    
+                    if((piXTa [j+1][i]==0)||(piXTa [j-1][i]==0)||(piXTa [j][i+1]==0)||(piXTa [j][i-1]==0)||(piXTa [j-1][i-1]==0)||(piXTa [j-1][i+1]==0)||(piXTa [j+1][i-1]==0)||(piXTa [j+1][i+1]==0))
+                    {
+                        int buf[]={255,0,0};
+                        in.putPixel(j,i,buf);
+                        piXTa[j][i]=co2;
+                        int angle = (int) ((int) 90*Math.atan2((i-0),(j-0)));
+                       System.out.println(angle);
+                       hist[j][angle]=hist[j][angle]+1;
+                    }
+            }
+        }
+
+      
+ }
+ 
+ ImageProcessor inh=in;
+ if (histogram) {
+   for (int i=0;i<ny;i++)
+    {
+        for (int j=0;j<nx;j++)
+        {
+            int iArray []={0,0,0};
+            inh.putPixel(j, i, iArray);
+        }
+    }}
+    for (int i=0;i<181;i++)
+    {
+        int [] intArray = new int [nx];
+        for (int j=0;j<nx;j++)
+        {
+            int iArray []={0,0,0};
+            if((j+1)%10==0)
+                iArray[0]=40;
+            if((1+i)%10==0)
+                iArray[0]=40;
+            intArray[j]=(int)hist[j][i];
+            int a = (int) (50*hist[j][i]);
+            int b = (int) (40*hist[j][i]);
+            
+            iArray[1]=b;
+            iArray[2]=a;
+            if (histogram)
+            {
+                
+            inh.putPixel(j, i, iArray);
+        }}
+       
+        System.out.println(Arrays.toString(intArray));
+        IJ.log(Arrays.toString(intArray));
+    }
+
+  }
+  public void mousePressed(MouseEvent e) {
+		int x = e.getX();
+		int y = e.getY();
+                 mx = canvas.offScreenX(x);
+		 my = canvas.offScreenY(y);
+                 
+	}
+
+	public void mouseReleased(MouseEvent e) {
+            
+            try
+        {
+        
+   nx = imp.getWidth(); 
+   ny = imp.getHeight();
+ 
+   //tworzenie pustej tablicy obrazu
+   int[][] piXtable=new int [nx][ny];
+   for(int i=0; i<ny; i++)
+        { 
+            for(int j=0; j<nx; j++) 
+            {
+                
+                    piXtable [j][i]=0;
+            }}
+   
+   double[][] histX=new double [nx][181];
+   for(int i=0; i<181; i++)
+        { 
+            for(int j=0; j<nx; j++) 
+            {
+                
+                    histX [j][i]=0;
+            }}
+
+  
+
+          //info
+          String nSx = Integer.toString(nx);
+          String nSy = Integer.toString(ny);
+          String infoXY ="x="+nSx+"   y="+nSy;
+         // IJ.showMessage("info",infoXY);
+     
+          //Binaryzacja z inwersja
+          if (binary)
+          BinaryX(ip, nx, ny);
+            
+            
+          //operacje morfologiczne
+          for (int morf = 0; morf<5; morf++)
+          {
+          CloseX(ip);
+          OpenX(ip);
+          CloseX(ip);
+          }      
+         SegmentX ( ip,  nx,  ny,mx,my,3, piXtable, histX);
+         canvas.removeMouseListener(this);
+        } 
+        catch(ClassCastException ex)
+        {
+          IJ.showMessage("Error","Wrong image type");
+        }
+            canvas.removeMouseListener(this);
+	}
+	public void mouseDragged(MouseEvent e) {}
+	public void mouseExited(MouseEvent e) {}
+	public void mouseClicked(MouseEvent e) {}	
+	public void mouseEntered(MouseEvent e) {}
+	public void mouseMoved(MouseEvent e) {}
+}
