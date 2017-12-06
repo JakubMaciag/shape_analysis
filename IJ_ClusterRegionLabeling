@@ -1,0 +1,457 @@
+package plugins;
+/**
+ *
+ * @author Jakub_Maciag
+ */
+import ij.ImagePlus;
+import ij.IJ;
+import ij.gui.GenericDialog;
+import ij.gui.ImageCanvas;
+import ij.process.ImageProcessor;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import static java.lang.Math.sqrt;
+import ij.plugin.filter.PlugInFilter;
+import static ij.plugin.filter.PlugInFilter.DOES_ALL;
+import ij.process.ImageConverter;
+import java.awt.event.*;
+
+public class IJ_ClusterRegionLabeling implements PlugInFilter, MouseListener, MouseMotionListener
+{
+  private ImagePlus imp;
+  private ImageProcessor ip;
+  private int nx, ny;
+  private int mx,my; 
+  private ImageCanvas canvas;
+  private boolean binary=true;
+  private boolean inwers=false;
+  
+  public int setup(String arg, ImagePlus imp) 
+  {
+      this.imp = imp;  
+      ip=imp.getProcessor();
+     IJ.register(Mouse_Listener.class);
+      return DOES_ALL;        
+  }
+
+  public void run(ImageProcessor ip) 
+  {
+        if (!(imp.getType()==ImagePlus.COLOR_RGB))
+        {
+            ImageConverter convert= new ImageConverter(imp);
+            convert.convertToRGB();
+        }
+            try {
+        
+	canvas = imp.getCanvas();
+	canvas.addMouseListener(this);
+	IJ.showMessage("Instrukcja Obsługi\n"
+                + "\n"
+                + "1. Po otworzeniu obrazu oraz uruchomieniu aktualnego pluginu oraz po zaakceptowaniu okna instrukcji należy określić, czy obraz musi zostać poddany\n"
+                + "dodatkowej inwersji (jeżeli badany obszar jest jasny - wymagana jest inwersja).\n"
+                + "W tym celu należy zaznaczyć w oknie dialogowym okienko 'Inwersja' a następnie je zaakceptować klikając przycisk OK\n"
+                + "Jeżeli inwersja nie jest wymagana, należy zaakceptować okno dialogowe bez zaznaczania inwersji.\n"
+                + "2. Region, który będzie podlegał przetwarzaniu musi spełniać próg binaryzacji zaimplementowanej w programie.\n"
+                + "3. W celu określenia badanego obszaru należy kliknąć lewym przyciskiem myszki po najechaniu kursorem na dany region.\n"
+                + "4. Po przetworzeniu pojawi się okno z wynikami wskazującymi główne parametry geometryczne i momentowe badanego obszaru oraz dany obszar podświetli się na niebiesko.\n "
+                + "Proces może potrwać kilka sekund.");	
+        
+        
+         GenericDialog gd = new GenericDialog("Czy chcesz dokonać inwersji?");
+        gd.addCheckbox("Inwersja", inwers);
+        gd.showDialog();
+        if (gd.wasCanceled()) 
+            return;
+        
+        inwers=gd.getNextBoolean();
+        if (gd.wasOKed())
+        {
+           
+            canvas = imp.getCanvas();
+            canvas.addMouseListener(this);
+     
+            }}
+            catch(ClassCastException ex)
+        {
+          IJ.showMessage("Error","Wrong image type");
+        }
+
+         
+  }
+
+  private void OpenX (ImageProcessor ip)
+  {
+  ip.dilate();
+  ip.erode();
+  }
+  private void CloseX (ImageProcessor ip)
+  {
+  ip.erode();
+  ip.dilate();
+  }
+  private void BinaryX (ImageProcessor ip, int nx, int ny )
+  {
+      if(inwers)
+      ip.invert();
+  for(int i=0; i<ny; i++)
+        { 
+            for(int j=0; j<nx; j++) 
+            {
+                int byffT []= {0,0,0};
+                ip.getPixel(j, i, byffT);
+                if((byffT[0]<90) || (byffT[1]<90)||(byffT[2]<90) )
+                {
+                    byffT[0]=0;
+                    byffT[1]=0;
+                    byffT[2]=0;
+                }
+                else 
+                {
+                    byffT[0]=255;
+                    byffT[1]=255;
+                byffT[2]=255;
+                }
+                ip.putPixel(j, i, byffT);
+          
+        }
+        }
+        ip.setBinaryThreshold();
+     ip.autoThreshold();
+     ip.invert();
+} 
+  
+  private void SegmentX (ImageProcessor in, int nx, int ny, int mx, int my,  int co,int piXTa[][], double valRT[] )
+  {
+     
+      //przypisanie odpowiednich wartosci tablicy
+    for(int i=0; i<ny; i++)
+        { 
+            for(int j=0; j<nx; j++) 
+            {
+                int bufferSeg []={0,0,0};
+                in.getPixel(j, i, bufferSeg);
+                  if (bufferSeg[0]==255&&bufferSeg[1]==255&&bufferSeg[2]==255)
+                  
+                piXTa [j][i]=1;
+                  else 
+                 piXTa [j][i]=0;
+                       
+            }
+        }
+    
+    
+   boolean varx=true;
+        float sx=0;
+        float sy=0;
+        float area = 0;
+        
+          piXTa[mx][my]=co;
+          int valu [] = {0,0,255};
+          in.putPixel(mx, my, valu);
+          int labeled =0;
+          int lab=0;
+        while (varx) {
+           if (lab<5000)
+                   varx=true;
+           else
+               varx=false;
+    for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+                if((piXTa [j][i]==1))
+                {
+                    if((piXTa [j+1][i]==co)||(piXTa [j-1][i]==co)||(piXTa [j][i+1]==co)||(piXTa [j][i-1]==co)||(piXTa [j-1][i-1]==co)||(piXTa [j-1][i+1]==co)||(piXTa [j+1][i-1]==co)||(piXTa [j+1][i+1]==co))
+                    {
+                        piXTa[j][i]=co;
+                        int buf[]={0,0,255};
+                        in.putPixel(j,i,buf);
+                        labeled=labeled+1;
+                        area=area+1;
+                        sx=sx+j;
+                        sy=sy+i;
+                         
+                           
+                    }
+            }
+        }
+
+      }
+    //System.out.println(Integer.toString(lab)); 
+    lab=lab+1;
+    };
+    //centroid
+    float xc = 0;
+    float yc=0;
+    xc=(float)sx/area;
+    yc=(float)sy/area;
+    
+   //minimum and maximum radius   
+   float rmin=100000;
+   float rmax=0;
+   rmin=nx+ny;
+   float sx2=0;
+   float sxx=0;
+   float n=0;
+   float c=0;
+   float p=3;
+   
+   
+    for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+                if((piXTa [j][i]==co))
+                {
+                    n=n+1;
+                    if((piXTa [j+1][i]==0)||(piXTa [j-1][i]==0)||(piXTa [j][i+1]==0)||(piXTa [j][i-1]==0)||(piXTa [j-1][i-1]==0)||(piXTa [j-1][i+1]==0)||(piXTa [j+1][i-1]==0)||(piXTa [j+1][i+1]==0))
+                    {
+                        c=c+1;
+                       float  r= (float) Math.sqrt(Math.pow(j-xc,2)+Math.pow((i-yc),2));
+                       if (r>rmax)
+                           rmax=r;
+                       if(r<rmin&&r>0)
+                           rmin=r;
+                       sx2=sx2+r;
+                       sxx=sxx+r*r;
+                       
+                       
+                    }
+            }
+        }
+
+      }
+      float a =rmax/rmin;
+      float v = (float) Math.sqrt((sxx-sx2*sx2/c)/sx2);
+      c=c*c/area;
+     
+      float rmean=(rmax+rmin)/2;   
+      
+      //ARP
+       float sx3=0;
+       float rk_rmean=0;
+       for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+                if((piXTa [j][i]==co))
+                {
+                    if((piXTa [j+1][i]==0)||(piXTa [j-1][i]==0)||(piXTa [j][i+1]==0)||(piXTa [j][i-1]==0)||(piXTa [j-1][i-1]==0)||(piXTa [j-1][i+1]==0)||(piXTa [j+1][i-1]==0)||(piXTa [j+1][i+1]==0))
+                    {
+                       float  r= (float) Math.sqrt(Math.pow(j-xc,2)+Math.pow((i-yc),2));
+                       sx3=sx3+r;
+                       sx3=sx3-rmean;
+                       if (sx3<0)
+                           sx3=0;
+                     rk_rmean= (float) (rk_rmean+Math.pow(sx3, p));
+                     
+                     }
+            }
+        }
+
+      }
+        float valueARP=(float) (1/n*rmean);
+        valueARP= (valueARP*rk_rmean);
+     
+     //
+       float k =(float) 1;
+       float x_xc=0;
+       float y_yc=0;
+       float xyc=0;
+       float xck=0;
+       float yck=0;
+       float xcyck=0;
+       float xcxx = 0;
+       float ycyy = 0;
+       
+       for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+                if((piXTa [j][i]==co))
+                {
+                   x_xc=j-xc;
+                   y_yc=i-yc;
+                   xck=(float) Math.pow(x_xc,k);
+                   yck=(float) Math.pow(y_yc, k);
+                   xyc=xck*yck;
+                   xcyck=xcyck+xyc;
+                   xcxx=xcxx+x_xc*x_xc;
+                   ycyy=ycyy+y_yc*y_yc;
+                   
+            }
+        }
+
+      }
+       float mMk=(1/area)*(xcyck);
+       float sigmax = (float) sqrt(xcxx/area);
+       float sigmay = (float) sqrt(ycyy/area);
+       float x_xc2=0;
+       float y_yc2=0;
+       float xyc2=0;
+       float xck2=0;
+       float yck2=0;
+       float xcyck2=0;
+       float xcxx2 = 0;
+       float ycyy2 = 0;
+       float pp=6;
+       float  qq=5;
+       for(int i=1; i<ny-1; i++)
+        { 
+            for(int j=1; j<nx-1; j++) 
+            {
+                if((piXTa [j][i]==co))
+                {
+                   x_xc2=j-xc;
+                   y_yc2=i-yc;
+                   xck2=(float) (x_xc/sigmax);
+                   yck2=(float) (y_yc/sigmay);
+                   xck2=(float) Math.pow(xck2,pp);
+                   yck2=(float) Math.pow(yck2, qq);
+                   xyc2=xck2*yck2;
+                   xcyck2=xcyck2+xyc2;
+                }
+            }
+        }
+       float mmpq=xcyck2;
+       imp.setImage(imp);
+      valRT[0]=c;//
+      valRT[1]=v;//
+      valRT[2]=a;//
+      valRT[3]=rmax;//
+      valRT[4]=rmin;//
+      valRT[5]=sxx;
+      valRT[6]=sx;
+      valRT[7]=sx2;
+      valRT[8]=n;//
+      valRT[9]=area;//
+      valRT[10]=xc;//
+      valRT[11]=yc;//
+      valRT[12]=rmean;//
+      valRT[13]=valueARP;//
+      valRT[14]=mMk;//
+      valRT[15]=sigmax;//
+      valRT[16]=sigmay;//
+      valRT[17]=pp;
+      valRT[18]=qq;
+      valRT[19]=k;//
+      valRT[20]=p;//
+      valRT[21]=mmpq;
+
+            System.out.println("____Wyniki analizy ksztaltu 1_____");
+            System.out.println( ">____C="+Float.toString(c)+"____");
+            System.out.println( ">____V="+Float.toString(v)+"____");
+            System.out.println( ">____A="+Float.toString(a)+"____");
+            System.out.println( ">____r_max="+Float.toString(rmax)+"____");
+            System.out.println( ">____r_min="+Float.toString(rmin)+"____");
+            System.out.println( ">____r_mean="+Float.toString(rmean)+"____");
+            System.out.println( ">____ARP="+Float.toString(valueARP)+"____(p="+Float.toString(p)+")____");
+            System.out.println( ">____x_c="+Float.toString(xc)+"____");
+            System.out.println( ">____y_c="+Float.toString(yc)+"____");
+            System.out.println( ">____Area="+Float.toString(area)+"____");
+            System.out.println( ">____N="+Float.toString(n)+"____");
+            System.out.println( ">____M_k="+Float.toString(mMk)+"____(k="+Float.toString(k)+")____");
+            System.out.println( ">____sigma_x="+Float.toString(sigmax)+"____");
+            System.out.println( ">____sigma_y="+Float.toString(sigmay)+"____");
+            System.out.println( ">____m_pq="+Float.toString(mmpq)+"____(p="+Float.toString(pp)+")____(q="+Float.toString(qq)+")____");
+             IJ.log("____Wyniki analizy ksztaltu_____\n"
+                     + ">____C="+Float.toString(c)+"____\n"
+                     + ">____V="+Float.toString(v)+"____\n"
+             +">____A="+Float.toString(a)+"____\n"
+             +">____r_max="+Float.toString(rmax)+"____\n"
+             +">____r_min="+Float.toString(rmin)+"____\n"
+             +">____r_mean="+Float.toString(rmean)+"____\n"
+             +">____ARP="+Float.toString(valueARP)+"____(p="+Float.toString(p)+")____\n"
+             +">____x_c="+Float.toString(xc)+"____\n"
+             +">____y_c="+Float.toString(yc)+"____\n"
+             +">____Area="+Float.toString(area)+"____\n"
+             +">____N="+Float.toString(n)+"____\n"
+             +">____M_k="+Float.toString(mMk)+"____(k="+Float.toString(k)+")____\n"
+             +">____sigma_x="+Float.toString(sigmax)+"____\n"
+             +">____sigma_y="+Float.toString(sigmay)+"____\n"
+             +">____m_pq="+Float.toString(mmpq)+"____(p="+Float.toString(pp)+")____(q="+Float.toString(qq)+")____\n");
+  } 
+        public void mousePressed(MouseEvent e) {
+		int x = e.getX();
+		int y = e.getY();
+                 mx = canvas.offScreenX(x);
+		 my = canvas.offScreenY(y);
+		
+		
+	}
+
+	public void mouseReleased(MouseEvent e) {
+            
+            try
+        {
+        nx = imp.getWidth(); 
+        ny = imp.getHeight();
+        
+        
+            
+        //tworzenie pustej tablicy obrazu
+        int[][] piXtable=new int [nx][ny];
+        for(int i=0; i<ny; i++)
+        { 
+            for(int j=0; j<nx; j++) 
+            {
+                piXtable [j][i]=0;
+            }
+        }
+   
+        //wektor wyjsciowy - opcjonalnie
+        double [] valueReturnnV = new double [30];
+        for (int i=0;i<30;i++)
+            valueReturnnV[i]=0;
+  
+          //info - wymiary obrazu w pikselach
+          String nSx = Integer.toString(nx);
+          String nSy = Integer.toString(ny);
+          String infoXY ="x="+nSx+"   y="+nSy;
+         
+     
+          //Binaryzacja 
+          if (binary)
+          BinaryX(ip, nx, ny);
+    
+          //operacje morfologiczne
+          for (int morf = 0; morf<5; morf++)
+          {
+          CloseX(ip);
+          OpenX(ip);
+          CloseX(ip);
+          }
+ 
+           
+             
+          String mSx = Integer.toString(mx);
+          String mSy = Integer.toString(my);
+          String infoXmY ="x="+mSx+"   y="+mSy;
+          
+         IJ.log("Wymiary obrazu" + infoXY+"    Wskazany piksel rozrostu" +infoXmY);
+         //segmentacja
+         SegmentX ( ip,  nx,  ny,mx,my,3, piXtable, valueReturnnV );
+         canvas.removeMouseListener(this);
+         
+        } 
+        catch(ClassCastException ex)
+        {
+          IJ.showMessage("Error","Wrong image type");
+        }
+	}
+	public void mouseDragged(MouseEvent e) {}
+	public void mouseExited(MouseEvent e) {}
+	public void mouseClicked(MouseEvent e) {}	
+	public void mouseEntered(MouseEvent e) {}
+	public void mouseMoved(MouseEvent e) {}
+  }
+  
+  
+ 
+
+
+
+
+    
+  
+
